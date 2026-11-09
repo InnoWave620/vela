@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../../theme/colors';
 import { useVela } from '../../context/VelaContext';
 import { formatBirthday } from '../../utils/dateUtils';

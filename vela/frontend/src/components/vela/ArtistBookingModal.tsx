@@ -47,30 +47,43 @@ export const ArtistBookingModal: React.FC<ArtistBookingModalProps> = ({
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      loadArtists();
-      setSelectedArtist(null);
-      setIsSponsorshipMode(false);
-      setNotes('');
-    }
-  }, [visible]);
-
-  const loadArtists = async (genre?: string) => {
-    setLoading(true);
-    try {
-      const data = await eventsService.getArtists(genre);
-      setArtists(data);
-    } catch {
-      // fallback
-    } finally {
-      setLoading(false);
-    }
+  const handleClose = () => {
+    setSelectedArtist(null);
+    setIsSponsorshipMode(false);
+    setNotes('');
+    onClose();
   };
+
+  useEffect(() => {
+    if (!visible) return;
+    let ignore = false;
+    eventsService
+      .getArtists()
+      .then((data) => {
+        if (!ignore) {
+          setArtists(data);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [visible]);
 
   const handleSelectGenre = (genre: string) => {
     setSelectedGenre(genre);
-    loadArtists(genre === 'All' ? undefined : genre);
+    setLoading(true);
+    eventsService
+      .getArtists(genre === 'All' ? undefined : genre)
+      .then((data) => setArtists(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
 
   const handleInitiateBooking = (artist: CelebrityArtist, isSponsored: boolean) => {
@@ -103,7 +116,7 @@ export const ArtistBookingModal: React.FC<ArtistBookingModalProps> = ({
             : `${selectedArtist.name} has been reserved. Birthday twins can now contribute to the pooled artist fee.`
         );
         onBookingComplete(updated);
-        onClose();
+        handleClose();
       }
     } catch {
       Alert.alert('Booking Error', 'Unable to complete artist booking. Please try again.');
@@ -113,7 +126,7 @@ export const ArtistBookingModal: React.FC<ArtistBookingModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -123,7 +136,7 @@ export const ArtistBookingModal: React.FC<ArtistBookingModalProps> = ({
               Book famous performers or request VELA Society Sponsorship
             </Text>
           </View>
-          <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={10}>
+          <Pressable onPress={handleClose} style={styles.closeBtn} hitSlop={10}>
             <VelaIcon name="close-outline" size={24} color={Colors.textPrimary} />
           </Pressable>
         </View>

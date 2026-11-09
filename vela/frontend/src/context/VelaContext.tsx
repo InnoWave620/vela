@@ -102,38 +102,38 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isGuest = !isAuthenticated;
 
-  const openAuthModal = (reason?: string) => {
+  const openAuthModal = useCallback((reason?: string) => {
     if (reason) setAuthPromptReason(reason);
     setAuthModalVisible(true);
-  };
+  }, []);
 
-  const closeAuthModal = () => {
+  const closeAuthModal = useCallback(() => {
     setAuthModalVisible(false);
-  };
+  }, []);
 
-  const requireAuth = (actionReason: string, callback?: () => void): boolean => {
+  const requireAuth = useCallback((actionReason: string, callback?: () => void): boolean => {
     if (isAuthenticated) {
       callback?.();
       return true;
     }
     openAuthModal(actionReason);
     return false;
-  };
+  }, [isAuthenticated, openAuthModal]);
 
-  const updateAvatar = (avatarUrl: string) => {
+  const updateAvatar = useCallback((avatarUrl: string) => {
     setUser((prev) => ({
       ...prev,
       avatar: avatarUrl,
       photos: prev.photos.includes(avatarUrl) ? prev.photos : [avatarUrl, ...prev.photos],
     }));
-  };
+  }, []);
 
-  const updateProfile = (data: Partial<VelaUser>) => {
+  const updateProfile = useCallback((data: Partial<VelaUser>) => {
     setUser((prev) => ({
       ...prev,
       ...data,
     }));
-  };
+  }, []);
 
   const [countdown, setCountdown] = useState<BirthdayCountdown>(() =>
     calculateBirthdayCountdown(INITIAL_USER.dateOfBirth)
@@ -147,40 +147,46 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(timer);
   }, [user.dateOfBirth]);
 
-  // Load feed when dob, feedCategory, or feedVisibility changes
-  const loadFeedData = useCallback(async (dob: string, cat: AgeCategory, vis: PostVisibility) => {
-    const data = await feedService.getFeedPosts(dob, cat, vis);
-    setPosts(data);
-  }, []);
-
-  // Load twins when dob or twinsCategory changes
-  const loadTwinsData = useCallback(async (dob: string, cat: AgeCategory) => {
-    const data = await twinsService.getBirthdayTwins(dob, cat);
-    setTwins(data);
-  }, []);
-
-  // Load events when dob or eventsCategory changes
-  const loadEventsData = useCallback(async (dob: string, cat: AgeCategory) => {
-    const data = await eventsService.getUpcomingEvents(dob, cat);
-    setEvents(data);
-  }, []);
-
   // Sync feed on changes
   useEffect(() => {
-    loadFeedData(user.dateOfBirth, feedCategory, feedVisibility);
-  }, [user.dateOfBirth, feedCategory, feedVisibility, loadFeedData]);
+    let ignore = false;
+    feedService.getFeedPosts(user.dateOfBirth, feedCategory, feedVisibility).then((data) => {
+      if (!ignore) {
+        setPosts(data);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [user.dateOfBirth, feedCategory, feedVisibility]);
 
   // Sync twins on changes
   useEffect(() => {
-    loadTwinsData(user.dateOfBirth, twinsCategory);
-  }, [user.dateOfBirth, twinsCategory, loadTwinsData]);
+    let ignore = false;
+    twinsService.getBirthdayTwins(user.dateOfBirth, twinsCategory).then((data) => {
+      if (!ignore) {
+        setTwins(data);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [user.dateOfBirth, twinsCategory]);
 
   // Sync events on changes
   useEffect(() => {
-    loadEventsData(user.dateOfBirth, eventsCategory);
-  }, [user.dateOfBirth, eventsCategory, loadEventsData]);
+    let ignore = false;
+    eventsService.getUpcomingEvents(user.dateOfBirth, eventsCategory).then((data) => {
+      if (!ignore) {
+        setEvents(data);
+      }
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [user.dateOfBirth, eventsCategory]);
 
-  const login = async (email: string, pass: string) => {
+  const login = useCallback(async (email: string, pass: string) => {
     setIsLoading(true);
     try {
       const loggedUser = await authService.login(email, pass);
@@ -189,9 +195,9 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const register = async (email: string, name: string, dob: string, pass?: string) => {
+  const register = useCallback(async (email: string, name: string, dob: string, pass?: string) => {
     setIsLoading(true);
     try {
       const newUser = await authService.register(email, name, dob, pass);
@@ -200,9 +206,9 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const updateBirthday = (dob: string) => {
+  const updateBirthday = useCallback((dob: string) => {
     const parts = dob.split('-');
     const year = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10);
@@ -217,21 +223,21 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       birthDay: day,
       zodiacSign: zodiac,
     }));
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setIsAuthenticated(false);
     setUser(GUEST_USER);
-  };
+  }, []);
 
-  const inviteTwin = async (twinId: string) => {
+  const inviteTwin = useCallback(async (twinId: string) => {
     await twinsService.inviteTwin(twinId);
     setTwins((prev) =>
       prev.map((t) => (t.id === twinId ? { ...t, isInvited: true } : t))
     );
-  };
+  }, []);
 
-  const createPost = async (
+  const createPost = useCallback(async (
     content: string,
     options?: {
       mediaType?: MediaType;
@@ -262,16 +268,16 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       options
     );
     setPosts((prev) => [newPost, ...prev]);
-  };
+  }, [user.id, user.name, user.avatar, user.ageCategory, user.isParentManaged, user.parentGuardianName]);
 
-  const toggleLikePost = async (postId: string) => {
+  const toggleLikePost = useCallback(async (postId: string) => {
     const updated = await feedService.toggleLike(postId);
     if (updated) {
       setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
     }
-  };
+  }, []);
 
-  const addComment = async (postId: string, text: string) => {
+  const addComment = useCallback(async (postId: string, text: string) => {
     const updated = await feedService.addComment(
       postId,
       { name: user.name, avatar: user.avatar },
@@ -280,9 +286,9 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (updated) {
       setPosts((prev) => prev.map((p) => (p.id === postId ? updated : p)));
     }
-  };
+  }, [user.name, user.avatar]);
 
-  const toggleJoinEvent = async (eventId: string) => {
+  const toggleJoinEvent = useCallback(async (eventId: string) => {
     const updated = await eventsService.toggleJoinEvent(eventId, {
       id: user.id,
       name: user.name,
@@ -291,13 +297,13 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (updated) {
       setEvents((prev) => prev.map((e) => (e.id === eventId ? updated : e)));
     }
-  };
+  }, [user.id, user.name, user.avatar]);
 
-  const updateEvent = (updatedEvent: VelaEvent) => {
+  const updateEvent = useCallback((updatedEvent: VelaEvent) => {
     setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
-  };
+  }, []);
 
-  const bookEventArtist = async (
+  const bookEventArtist = useCallback(async (
     eventId: string,
     artistId: string,
     isVelaSponsored: boolean = false,
@@ -308,7 +314,7 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateEvent(updated);
     }
     return updated;
-  };
+  }, [updateEvent]);
 
   const value = useMemo(
     () => ({
@@ -365,6 +371,22 @@ export const VelaProvider: React.FC<{ children: React.ReactNode }> = ({ children
       feedVisibility,
       authModalVisible,
       authPromptReason,
+      openAuthModal,
+      closeAuthModal,
+      requireAuth,
+      login,
+      register,
+      updateBirthday,
+      updateAvatar,
+      updateProfile,
+      logout,
+      inviteTwin,
+      createPost,
+      toggleLikePost,
+      addComment,
+      toggleJoinEvent,
+      updateEvent,
+      bookEventArtist,
     ]
   );
 
