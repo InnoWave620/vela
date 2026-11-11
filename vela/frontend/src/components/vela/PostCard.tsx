@@ -7,10 +7,14 @@ import {
   Pressable,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
 import { FeedPost, AgeCategory, MediaFilterType } from '../../types/vela';
 import { VelaIcon } from './VelaIcon';
+import { VelaVideoPlayer } from './VelaVideoPlayer';
+import { saveMediaToGallery } from '../../utils/mediaUtils';
 
 interface PostCardProps {
   post: FeedPost;
@@ -40,8 +44,9 @@ const FILTER_TINTS: Record<MediaFilterType, { name: string; overlayHex?: string 
 export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) => {
   const [showComments, setShowComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
-  const [isPlayingVideo, setIsPlayingVideo] = useState(false);
   const [isPlayingMusic, setIsPlayingMusic] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
   const handleSendComment = () => {
     if (commentInput.trim().length === 0) return;
@@ -53,6 +58,28 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) =
   const displayImage = post.thumbnailUrl || post.mediaUrl;
   const categoryMeta = post.ageCategory ? CATEGORY_META[post.ageCategory] : CATEGORY_META.all;
   const filterMeta = post.filterApplied ? FILTER_TINTS[post.filterApplied] : undefined;
+
+  const handleDownloadMedia = async () => {
+    const targetUrl = post.mediaUrl || displayImage;
+    if (!targetUrl) return;
+
+    setIsDownloading(true);
+    const result = await saveMediaToGallery(targetUrl, isVideo ? 'video' : 'image');
+    setIsDownloading(false);
+
+    if (result.success) {
+      setDownloaded(true);
+      Alert.alert(
+        'Saved to Gallery',
+        isVideo
+          ? 'Birthday video memory successfully saved to your device gallery.'
+          : 'Birthday photo memory successfully saved to your device gallery.'
+      );
+      setTimeout(() => setDownloaded(false), 4000);
+    } else {
+      Alert.alert('Save Error', result.error || 'Unable to save to gallery.');
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -129,8 +156,23 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) =
       {/* Post Content */}
       <Text style={styles.content}>{post.content}</Text>
 
-      {/* Media: Video Memory or Photo Memory with Visual Filters & Overlays */}
-      {displayImage ? (
+      {/* Media: Autoplaying Video Memory or Photo Memory with Visual Filters & Overlays */}
+      {isVideo && post.mediaUrl ? (
+        <View style={styles.mediaContainer}>
+          <VelaVideoPlayer
+            videoUrl={post.mediaUrl}
+            autoPlay={true}
+            filterOverlayHex={filterMeta?.overlayHex}
+            onDownloadPress={handleDownloadMedia}
+            isDownloading={isDownloading}
+          />
+          {post.overlayText ? (
+            <View style={styles.stickerBadge} pointerEvents="none">
+              <Text style={styles.stickerText}>{post.overlayText}</Text>
+            </View>
+          ) : null}
+        </View>
+      ) : displayImage ? (
         <View style={styles.mediaContainer}>
           <Image source={{ uri: displayImage }} style={styles.mediaImage} />
 
@@ -141,6 +183,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) =
                 styles.filterOverlayTint,
                 { backgroundColor: filterMeta.overlayHex },
               ]}
+              pointerEvents="none"
             />
           ) : null}
 
@@ -149,33 +192,6 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) =
             <View style={styles.stickerBadge}>
               <Text style={styles.stickerText}>{post.overlayText}</Text>
             </View>
-          ) : null}
-
-          {/* Video Play / Pause Controls */}
-          {isVideo ? (
-            <TouchableOpacity
-              style={styles.videoOverlay}
-              activeOpacity={0.9}
-              onPress={() => setIsPlayingVideo(!isPlayingVideo)}
-            >
-              <View style={styles.playButtonCircle}>
-                <VelaIcon
-                  name={isPlayingVideo ? 'pause' : 'play'}
-                  size={20}
-                  color={Colors.black}
-                />
-              </View>
-              <View style={styles.videoBadgeRow}>
-                <View style={styles.videoDurationBadge}>
-                  <Text style={styles.videoDurationText}>
-                    {isPlayingVideo ? 'PLAYING MEMORY' : `0:${post.videoDurationSeconds || 30}`}
-                  </Text>
-                </View>
-                <View style={styles.videoHdBadge}>
-                  <Text style={styles.videoHdText}>4K MEMORY</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
           ) : null}
         </View>
       ) : null}
@@ -239,6 +255,27 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onLike, onComment }) =
             {post.commentsCount > 0 ? `${post.commentsCount} Comments` : 'Comment'}
           </Text>
         </Pressable>
+
+        {/* Download Video / Save to Gallery Action */}
+        {displayImage ? (
+          <Pressable
+            onPress={handleDownloadMedia}
+            style={[styles.actionButton, downloaded && styles.actionButtonSaved]}
+            disabled={isDownloading}>
+            {isDownloading ? (
+              <ActivityIndicator size="small" color={Colors.accentDark} />
+            ) : (
+              <VelaIcon
+                name={downloaded ? 'checkmark-circle-outline' : 'download-outline'}
+                size={16}
+                color={downloaded ? '#059669' : Colors.textSecondary}
+              />
+            )}
+            <Text style={[styles.actionCount, downloaded && styles.actionSavedText]}>
+              {downloaded ? 'Saved' : isVideo ? 'Save Video' : 'Save'}
+            </Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.twinCelebrationTag}>
           <VelaIcon
@@ -603,6 +640,13 @@ const styles = StyleSheet.create({
   },
   actionButtonLiked: {
     backgroundColor: '#FEE2E2',
+  },
+  actionButtonSaved: {
+    backgroundColor: '#ECFDF5',
+  },
+  actionSavedText: {
+    color: '#059669',
+    fontWeight: '700',
   },
   actionCount: {
     fontSize: 13,

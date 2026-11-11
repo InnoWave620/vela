@@ -24,6 +24,8 @@ import {
 } from '../../types/vela';
 import { POPULAR_SOUNDTRACKS } from '../../services/mockData';
 import { VelaIcon } from './VelaIcon';
+import { VelaVideoPlayer } from './VelaVideoPlayer';
+import { saveMediaToGallery } from '../../utils/mediaUtils';
 
 interface Props {
   visible: boolean;
@@ -120,7 +122,6 @@ export const VelaStudioModal: React.FC<Props> = ({
   // Core Media State
   const [mediaType, setMediaType] = useState<MediaType>(initialMediaType);
   const [customMediaUri, setCustomMediaUri] = useState<string | null>(null);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(true);
 
   // Overlays & Editing
   const [selectedFilter, setSelectedFilter] = useState<MediaFilterType>('celestial');
@@ -150,10 +151,37 @@ export const VelaStudioModal: React.FC<Props> = ({
   const [previewTrackId, setPreviewTrackId] = useState<string | null>(null);
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isSavingToGallery, setIsSavingToGallery] = useState(false);
+  const [savedToGallery, setSavedToGallery] = useState(false);
 
   const activeMedia = mediaType === 'video' ? SAMPLE_MEDIA.video : SAMPLE_MEDIA.image;
   const currentMediaUri = customMediaUri || activeMedia.thumbnailUrl || activeMedia.mediaUrl;
   const currentFilter = FILTERS.find((f) => f.key === selectedFilter) || FILTERS[0];
+
+  const handleSaveToGallery = async () => {
+    const targetUri = customMediaUri || (mediaType === 'video' ? activeMedia.mediaUrl : activeMedia.thumbnailUrl);
+    if (!targetUri) {
+      Alert.alert('Notice', 'No media available to save to gallery.');
+      return;
+    }
+
+    setIsSavingToGallery(true);
+    const result = await saveMediaToGallery(targetUri, mediaType === 'video' ? 'video' : 'image');
+    setIsSavingToGallery(false);
+
+    if (result.success) {
+      setSavedToGallery(true);
+      Alert.alert(
+        'Saved to Gallery',
+        mediaType === 'video'
+          ? 'Your edited video memory has been saved to your device gallery.'
+          : 'Your edited photo memory has been saved to your device gallery.'
+      );
+      setTimeout(() => setSavedToGallery(false), 4000);
+    } else {
+      Alert.alert('Save Failed', result.error || 'Could not save media to device gallery.');
+    }
+  };
 
   // Pick real photo or video from device library
   const handlePickDeviceMedia = async () => {
@@ -220,38 +248,32 @@ export const VelaStudioModal: React.FC<Props> = ({
         {/* 1. FULL-SCREEN CANVAS VIEWPORT */}
         {/* ========================================================= */}
         <View style={styles.canvasContainer}>
-          {/* Main Media (Video Thumbnail or Photo) */}
-          <Image source={{ uri: currentMediaUri }} style={styles.fullScreenMedia} />
-
-          {/* Real-time Filter Overlay Tint */}
-          {currentFilter.colorOverlayHex ? (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: currentFilter.colorOverlayHex },
-              ]}
-              pointerEvents="none"
+          {/* Main Media: Autoplaying Video or High-Res Photo */}
+          {mediaType === 'video' && (customMediaUri || activeMedia.mediaUrl) ? (
+            <VelaVideoPlayer
+              videoUrl={customMediaUri || activeMedia.mediaUrl}
+              autoPlay={true}
+              filterOverlayHex={currentFilter.colorOverlayHex}
+              style={styles.fullScreenVideo}
             />
-          ) : null}
+          ) : (
+            <>
+              <Image source={{ uri: currentMediaUri }} style={styles.fullScreenMedia} />
+              {currentFilter.colorOverlayHex ? (
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    { backgroundColor: currentFilter.colorOverlayHex },
+                  ]}
+                  pointerEvents="none"
+                />
+              ) : null}
+            </>
+          )}
 
           {/* Subtle Top & Bottom Gradient Shadows for Legibility */}
           <View style={styles.topVignette} pointerEvents="none" />
           <View style={styles.bottomVignette} pointerEvents="none" />
-
-          {/* Tap-To-Play Overlay Button (Center Screen) */}
-          {mediaType === 'video' && (
-            <TouchableOpacity
-              style={styles.centerPlayTapArea}
-              onPress={() => setIsPlayingPreview(!isPlayingPreview)}
-              activeOpacity={0.9}
-            >
-              {!isPlayingPreview && (
-                <View style={styles.centerPlayIndicator}>
-                  <VelaIcon name="play" size={32} color="#FFFFFF" />
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
 
           {/* Canvas Floating Text Sticker */}
           {overlayText ? (
@@ -360,8 +382,23 @@ export const VelaStudioModal: React.FC<Props> = ({
             )}
           </TouchableOpacity>
 
-          {/* Switch Format or Upload From Gallery */}
+          {/* Switch Format or Upload From Gallery or Save */}
           <View style={styles.topRightControls}>
+            <TouchableOpacity
+              onPress={handleSaveToGallery}
+              style={[styles.glassCircleBtn, savedToGallery && styles.glassCircleBtnSaved]}
+              disabled={isSavingToGallery}
+              hitSlop={8}>
+              {isSavingToGallery ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <VelaIcon
+                  name={savedToGallery ? 'checkmark' : 'download-outline'}
+                  size={18}
+                  color={savedToGallery ? '#10B981' : '#FFFFFF'}
+                />
+              )}
+            </TouchableOpacity>
             <TouchableOpacity onPress={handlePickDeviceMedia} style={styles.glassCircleBtn} hitSlop={8}>
               <VelaIcon name="images-outline" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -447,16 +484,60 @@ export const VelaStudioModal: React.FC<Props> = ({
             </View>
             <Text style={styles.railItemLabel}>{mediaType === 'video' ? 'Photo' : 'Video'}</Text>
           </TouchableOpacity>
+
+          {/* 7. Save to Device Gallery */}
+          <TouchableOpacity
+            style={styles.railItem}
+            onPress={handleSaveToGallery}
+            disabled={isSavingToGallery}
+          >
+            <View style={[styles.railIconCircle, savedToGallery && styles.railIconCircleSaved]}>
+              {isSavingToGallery ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <VelaIcon
+                  name={savedToGallery ? 'checkmark' : 'download-outline'}
+                  size={20}
+                  color={savedToGallery ? '#10B981' : '#FFFFFF'}
+                />
+              )}
+            </View>
+            <Text style={styles.railItemLabel}>{savedToGallery ? 'Saved' : 'Save'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ========================================================= */}
-        {/* 4. BOTTOM ACTION BAR (DRAFTS & POST BUTTON) */}
+        {/* 4. BOTTOM ACTION BAR (DRAFTS, SAVE TO GALLERY & POST BUTTON) */}
         {/* ========================================================= */}
         <View style={[styles.bottomActionBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
           {/* Drafts Button */}
           <TouchableOpacity onPress={onClose} style={styles.draftsButton} activeOpacity={0.8}>
             <VelaIcon name="bookmark-outline" size={16} color="#FFFFFF" style={styles.draftsIcon} />
             <Text style={styles.draftsButtonText}>Drafts</Text>
+          </TouchableOpacity>
+
+          {/* Save to Device Gallery Button */}
+          <TouchableOpacity
+            disabled={isSavingToGallery}
+            onPress={handleSaveToGallery}
+            style={[styles.saveGalleryButton, savedToGallery && styles.saveGalleryButtonSaved]}
+            activeOpacity={0.85}
+          >
+            {isSavingToGallery ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <View style={styles.saveGalleryButtonInner}>
+                <VelaIcon
+                  name={savedToGallery ? 'checkmark-circle-outline' : 'download-outline'}
+                  size={16}
+                  color="#FFFFFF"
+                  style={styles.saveGalleryIcon}
+                />
+                <Text style={[styles.saveGalleryButtonText, savedToGallery && styles.saveGalleryTextSaved]}>
+                  {savedToGallery ? 'Saved' : 'Save to Gallery'}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
 
           {/* Post Button */}
@@ -792,6 +873,11 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT,
     resizeMode: 'cover',
   },
+  fullScreenVideo: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    borderRadius: 0,
+  },
   topVignette: {
     position: 'absolute',
     top: 0,
@@ -1086,6 +1172,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  saveGalleryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#333333',
+    marginLeft: 8,
+  },
+  saveGalleryButtonSaved: {
+    backgroundColor: '#064E3B',
+    borderColor: '#10B981',
+  },
+  saveGalleryButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  saveGalleryIcon: {
+    marginRight: 6,
+  },
+  saveGalleryButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  saveGalleryTextSaved: {
+    color: '#34D399',
+  },
+  glassCircleBtnSaved: {
+    backgroundColor: '#064E3B',
+    borderColor: '#10B981',
+  },
+  railIconCircleSaved: {
+    backgroundColor: '#064E3B',
+    borderColor: '#10B981',
   },
   postButton: {
     flex: 1,
